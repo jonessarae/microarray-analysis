@@ -1,3 +1,19 @@
 # Microarray Analysis using R
 
-Final project for AS.410.671(82), Gene Expression Data Analysis and Visualization. 
+Final project for AS.410.671(82), Gene Expression Data Analysis and Visualization. Includes powerpoint presentation and text file of R code. 
+
+## Data
+
+Accession #: GDS3416
+
+GPL570: [HG-U133_Plus_2] Affymetrix Human Genome U133 Plus 2.0 Array
+
+72 samples, 54,675 genes
+
+https://www.ncbi.nlm.nih.gov/sites/GDSbrowser?acc=GDS3416
+
+## Analysis
+
+Dusek et al. assessed the transcriptional profile of whole blood collected from long-term practitioners of daily relaxation response practice (i.e. deep breathing, meditation) in comparison to controls. Controls then took part in a 8-week RR practice with training/education. Whole blood was collected before and after this 8-week RR practice.
+For this analysis, controls were treated as two groups: no RR practice and 8-week RR practice. These groups, along with the long-term RR practice group, were compared.   
+
