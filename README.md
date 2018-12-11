@@ -1,6 +1,6 @@
 # Microarray Analysis using R
 
-Final project for AS.410.671(82), Gene Expression Data Analysis and Visualization. Includes powerpoint presentation and text file of R code. 
+Final project for AS.410.671(82), Gene Expression Data Analysis and Visualization. Includes powerpoint presentation of analysis/results and text file of R code. 
 
 ## Data
 
