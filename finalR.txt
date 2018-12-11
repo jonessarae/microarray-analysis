@@ -1,0 +1,219 @@
+#installing GEOquery
+source("http://www.bioconductor.org/biocLite.R")
+biocLite("GEOquery")
+
+#load GEOquery, Biobase
+library(GEOquery)
+library(Biobase)
+
+#set working directory
+setwd("C:/Users/Sara/Desktop")
+
+#open existing GDS file
+GDS3416 <- getGEO(filename='GDS3416_full.soft.gz')
+
+#set GDS object into expression set object
+eset <- GDS2eSet(GDS3416, do.log2=FALSE, getGPL=FALSE)
+library(plyr)
+#rename factors to shorter name
+eset$individual <-revalue(eset$individual, c("no relaxation response practice"="NT","8 weeks of relaxation response practice"="ST","long-term daily relaxation response practice"="LT"))
+
+#get matrix of eset
+dat <- exprs(eset)
+#get annotation of dat - individual refers to RR group
+ann <- data.frame(eset$sample, eset$individual)
+
+#OUTLIERS
+
+#correlation plot - heat map
+library(gplots)
+dat.cor <- cor(dat, use="pairwise.complete.obs")
+
+layout(matrix(c(1,1,1,1,1,1,1,1,2,2), 5, 2, byrow = TRUE))
+par(oma=c(5,7,1,1))
+cx <- rev(colorpanel(25,"yellow","red","blue"))
+leg <- seq(min(dat.cor,na.rm=T),max(dat.cor,na.rm=T),length=10)
+
+image(dat.cor,main="Correlation plot RR data",axes=F,col=cx)
+axis(1,at=seq(0,1,length=ncol(dat.cor)),label=dimnames(dat.cor)[[2]],
+cex.axis=0.9,las=2)
+axis(2,at=seq(0,1,length=ncol(dat.cor)),label=dimnames(dat.cor)[[2]],
+cex.axis=0.9,las=2)
+
+image(as.matrix(leg),col=cx,axes=F)
+tmp <- round(leg,2)
+axis(1,at=seq(0,1,length=length(leg)),labels=tmp,cex.axis=1)
+
+#Hierarchical clustering dendrogram 
+dat <- t(dat) #transpose dat
+dat.dist <- dist(dat,method="euclidean") #calculate distance
+dat.clust <- hclust(dat.dist,method="single") #calculate clusters
+plot(dat.clust,labels=names(dat),cex=0.75) #plot cluster tree
+
+#CV vs. mean plot 
+dat.mean <- apply(log2(dat),2,mean) #calculate mean for each sample
+dat.sd <- sqrt(apply(log2(dat),2,var)) #calculate stdev for each sample
+dat.cv <- dat.sd/dat.mean #calculate cv
+plot(dat.mean,dat.cv,main="RR Dataset\nSample CV vs. Mean",xlab="Mean",ylab="CV",col='blue',cex=1.5,type="n")
+points(dat.mean,dat.cv,bg="purple",col=1,pch=21)
+text(dat.mean,dat.cv,label=dimnames(dat)[[2]],pos=1,cex=0.5)
+
+#Average correlation plot 
+dat.cor <- cor(dat)
+dat.avg <- apply(dat.cor,1,mean,na.rm=TRUE)
+par(oma=c(3,0.1,0.1,0.1))
+plot(c(1,length(dat.avg)),range(dat.avg),type="n",xlab="",ylab="Avg r",main="Avg correlation of RR samples",axes=F)
+points(dat.avg,bg="red",col=1,pch=21,cex=1.25)
+axis(1,at=c(1:length(dat.avg)),labels=dimnames(dat)[[2]],las=2,cex.lab=0.4,cex.axis=0.6)
+axis(2)
+abline(v=seq(0.5,length(dat.avg),1),col="grey")
+
+#remove outliers
+dat <- dat[, !(colnames(dat) %in% c("GSM253709","GSM253734"))]
+ann <- ann[!ann$eset.sample %in% c("GSM253709","GSM253734"),]
+
+#FILTER
+
+#get mean expression values for each row
+dat.avg <- apply(dat,1,mean,na.rm=TRUE)
+#subset dat with genes with average > 50
+dat.f <-dat[dat.avg>50,]
+#get number per group, 
+length(grep("long", ann$eset.individual)) #long term RR
+
+#DIFFERENTIAL EXPRESSION
+
+#obtain classifications for samples
+LT<-ann$eset.individual == "long-term daily relaxation response practice"
+ST<-ann$eset.individual == "8 weeks of relaxation response practice"
+NT<-ann$eset.individual == "no relaxation response practice"
+
+#1-factor ANOVA with 3 levels
+aov.all.genes <- function(x,s1,s2,s3) {
+    x1 <- as.numeric(x[s1])
+    x2 <- as.numeric(x[s2])
+    x3 <- as.numeric(x[s3])
+    fac <- c(rep("A",length(x1)), rep("B",length(x2)), rep("C",length(x3)))
+    a.dat <- data.frame(as.factor(fac),c(x1,x2,x3))
+    names(a.dat) <- c("factor","express")
+    p.out <- summary(aov(express~factor, a.dat))[[1]][1,5]
+    #p.out <- summary(aov(express~factor, a.dat))[[1]][1,4]    # use to get F-statistic
+    return(p.out)
+}
+
+#log2 the data
+dat.f.log <-log2(dat.f)
+#run AVOVA function
+aov.run <- apply(dat.f.log, 1, aov.all.genes,s1=LT,s2=ST,s3=NT)
+#subset probesets with p<0.05
+pv<-as.data.frame(aov.run)
+pv <- subset(pv, pv<0.05)
+#subset data with genes that have p-value < 0.05
+dat.f.sub <- dat.f[rownames(pv),]
+#adjust p-values 
+aov.run.cor <- p.adjust(aov.run, method="holm")
+
+#look at distribution of p-values
+par(mfrow=c(1,2))
+hist(pv,col="lightblue",xlab="p-values",main="P-value dist’n between\nall groups",cex.main=0.9)
+abline(v=.01,col=2,lwd=2)
+hist(-log10(pv),col="lightblue",xlab="log10(p-values)", main="-log10(pv) dist’n between\nall groups",cex.main=0.9)
+abline(v= -log10(.01),col=2,lwd=2)
+
+#boxplot of single gene
+plot(dat.f.sub["207695_s_at",]~ann$eset.individual,dat.f.sub,ylab='expression',xlab='RR groups',main='Boxplot of a single gene, 207695_s_at, with group means that differ\n between all three groups (p<0.01)',cex.main=0.9,col='orange')
+
+#Gene expression
+
+LT.m <-apply(dat.f.log[,LT],1,mean,na.rm=T) #mean of genes in LT group
+NT.m <-apply(dat.f.log[,NT],1,mean,na.rm=T) #mean of genes in NT group
+fold <- NT.m-LT.m #fold change between NT and LT groups
+linear_fold <- 2^(fold) #to convert log scale to linear scale
+max(linear_fold) #to get maximum fold change
+min(linear_fold) #to get minimum fold change
+
+#get probesets with a p-value less than 0.01 and fold change > 1.5
+pos_exp <- sort(linear_fold[(LvNpv<0.01 & linear_fold >1.5)])
+#get probesets with a p-value less than 0.05 and fold change < 0.5
+neg_exp <- sort(linear_fold[(LvNpv<0.05 & linear_fold <0.5)])
+
+#Student's t-test
+t.test.all.genes <- function(log_dat,s1,s2) {
+    x1 <- log_dat[s1]
+    x2 <- log_dat[s2]
+    x1 <- as.numeric(x1)
+    x2 <- as.numeric(x2)
+    t.out <- t.test(x1,x2, alternative="two.sided",var.equal=T)
+    out <- as.numeric(t.out$p.value)
+    return(out)
+}
+
+#Run Student's t-test on LT and NT groups
+LvNpv <- apply(dat.f.log,1,t.test.all.genes,LT,NT)
+
+#volcano plot
+LvNpv_log10 <- -1*log10(LvNpv) #transform p-value
+plot(range(LvNpv_log10), range(fold),type='n',xlab='-1*log10(p-value)',ylab='fold change',main='Volcano Plot\nLT and NT group differences')
+points(LvNpv_log10,fold,col='black',pch=21,bg=1) #black
+points(LvNpv_log10[(LvNpv_log10>-log10(.05)&fold>log2(2))],fold[(LvNpv_log10>-log10(.05)&fold>log2(2))],col=1,bg=2,pch=21)#red 
+points(LvNpv_log10[(LvNpv_log10>-log10(.05)&fold<-log2(2))],fold[(LvNpv_log10>-log10(.05)&fold<-log2(2))],col=1,bg=3,pch=21) #green
+abline(v= -log10(.05))
+abline(h= -log2(2))
+abline(h=log2(2))
+
+#Clustering
+
+#Calculate PCA on the samples and retain the first two components vectors, k=3
+dat.pca <- prcomp(t(dat.f.sub),cor=F)
+dat.loadings <- dat.pca$x[,1:2]
+cl <- kmeans(dat.loadings, centers=3, iter.max=20)
+#plot K-means clustering
+plot(dat.loadings, col = cl$cluster,cex=1, main="Scatter plot of K-means
+clustering")
+points(cl$centers, col = 1:3, pch = "*",cex=2.5)
+text(dat.loadings,labels=ann$eset.individual, pos=4)
+
+#Plot a hierarchial clustering
+colnames(dat.f.sub) <-ann$eset.individual
+hc <- hclust(dist(t(dat.f.sub), method="manhattan"), "median")
+plot(hc, main="Cluster Dendrogram of Samples")
+
+#Classification
+
+library(MASS)
+
+#bind class with transposition of data
+datx <- as.data.frame(t(dat.f.sub))
+datx <- data.frame(ann$eset.individual,datx)
+
+#create testing and training sets
+train_data <- datx[c(1:15,24:38,47:61),]
+test_data <- datx[c(16:23,39:46,62:70),]
+
+actual <- test_data[,1]#keep class info
+test_data <- test_data[,-1]#delete column with class info
+
+#discriminant analysis
+dat.lda <- lda(train_data[,1]~.,train_data[,2:483])
+dat.pred <- predict(dat.lda,test_data)
+table(dat.pred$class,actual)
+
+#plot discriminant analysis
+plot(dat.pred$x,bg=as.numeric(factor(actual)),pch=21,col=1,ylab="LD2",axes=F,xlab="LD1",main="Discriminant analysis for relaxation response dataset")
+axis(1)
+axis(2)
+box()
+legend(1.25,-0.95,c("NT","ST", "LT"),pt.bg=c("black","green","red"),pch=21,cex=.9,horiz=F)
+
+#support vector machine
+library(kernlab)
+svp<- ksvm(dat.f.sub,ann$eset.individual,type="C-svc")
+fit <- fitted(svp)
+#plot SVM
+par(mfrow=c(1,2), xpd=NA) #helps visualize entire plot, x-axis not cutoff
+plot(svp@coef[[1]],type="n",ylab="Coefficient*data",xlab="",axes=F,main="SVM using relaxation response dataset")
+text(c(1:70),cex=0.5,svp@coef[[1]],fit,col=as.numeric(factor(fit)))
+axis(2)
+axis(1,at=c(1:70),labels=dimnames(t(dat.f.sub))[[1]],cex.axis=0.5,las=1, cex=0.2)
+#error rates
+table(ann$eset.individual,fit)
