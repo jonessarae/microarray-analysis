@@ -2,6 +2,10 @@
 
 Final project for AS.410.671(82), Gene Expression Data Analysis and Visualization. Includes powerpoint presentation of analysis/results and text file of R code. 
 
+## Software
+
+RStudio 1.0.153
+
 ## Data
 
 Accession #: GDS3416
