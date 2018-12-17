@@ -4,7 +4,7 @@ Final project for AS.410.671(82), Gene Expression Data Analysis and Visualizatio
 
 ## Software
 
-RStudio 1.0.153
+RStudio Version 1.0.153
 
 ## Data
 
